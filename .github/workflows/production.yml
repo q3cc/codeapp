@@ -1,5 +1,7 @@
-name: Build & Upload to App Store
-on: [workflow_dispatch]
+name: Build & Deploy to TestFlight
+on:
+  push:
+    branches: [main]
 
 concurrency:
   group: ${{ github.ref }}
@@ -7,7 +9,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: Deploying to App Store
+    name: Deploying to TestFlight
     runs-on: macOS-15
 
     steps:
@@ -16,7 +18,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Deploy production build to App Store via Fastlane
+      - name: Deploy iOS Beta to TestFlight via Fastlane
         run: fastlane beta
         env:
           APP_STORE_CONNECT_TEAM_ID: "${{ secrets.APP_STORE_CONNECT_TEAM_ID }}"
@@ -34,7 +36,13 @@ jobs:
           APPLE_KEY_ID: "${{ secrets.APPLE_KEY_ID }}"
           APPLE_ISSUER_ID: "${{ secrets.APPLE_ISSUER_ID }}"
           APPLE_KEY_CONTENT: "${{ secrets.APPLE_KEY_CONTENT }}"
-          JUDGE0_KEY: "${{ secrets.JUDGE0_KEY }}"
-          JUDGE0_ENDPOINT: "${{ secrets.JUDGE0_ENDPOINT }}"
-          DISTRIBUTE_EXTERNAL: "false"
+          JUDGE0_KEY: ""
+          JUDGE0_ENDPOINT: ""
+          DISTRIBUTE_EXTERNAL: "true"
           XCODE_PATH: "/Applications/Xcode_26.0.app"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipa-build
+          path: Code.ipa
