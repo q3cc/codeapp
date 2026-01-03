@@ -10,51 +10,48 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
-    name: Build Unsigned IPA
+  build:
+    name: Build iPadOS Unsigned
     runs-on: macOS-15
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          lfs: true # 必须开启，确保 xcframework 存在
           fetch-depth: 0
-          lfs: true # 解决 XCFramework 缺失的关键
 
       - name: Force LFS Pull
         run: git lfs pull
 
-      - name: Fix Bundler Version & Build
-        # 1. 安装兼容 Fastlane 的 Bundler 版本
-        # 2. 直接运行 fastlane gym (不使用 bundle exec 避免版本冲突)
+      - name: Set Xcode Version
+        run: sudo xcode-select -s /Applications/Xcode_16.0.app
+
+      - name: Archive Project (No Signing)
+        # 直接使用 xcodebuild 避开 Bundler 冲突和 Fastlane lane 缺失问题
         run: |
-          gem install bundler:2.5.23 
-          fastlane gym \
-            --scheme "Code App" \
-            --clean true \
-            --output_directory "./" \
-            --output_name "Code.ipa" \
-            --skip_profile_detection true \
-            --export_method "ad-hoc" \
-            --xcargs "CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' CODE_SIGN_ENTITLEMENTS='' GCC_GENERATE_DEBUGGING_SYMBOLS=NO"
-        env:
-          # 保留原始环境变量以确保插件或脚本能获取项目上下文
-          APP_STORE_CONNECT_TEAM_ID: "${{ secrets.APP_STORE_CONNECT_TEAM_ID }}"
-          DEVELOPER_APP_ID: "${{ secrets.DEVELOPER_APP_ID }}"
-          DEVELOPER_APP_IDENTIFIER: "${{ secrets.DEVELOPER_APP_IDENTIFIER }}"
-          DEVELOPER_PORTAL_TEAM_ID: "${{ secrets.DEVELOPER_PORTAL_TEAM_ID }}"
-          MATCH_PASSWORD: "${{ secrets.MATCH_PASSWORD }}"
-          GIT_AUTHORIZATION: "${{ secrets.GIT_AUTHORIZATION }}"
-          TEMP_KEYCHAIN_PASSWORD: "${{ secrets.TEMP_KEYCHAIN_PASSWORD }}"
-          TEMP_KEYCHAIN_USER: "${{ secrets.TEMP_KEYCHAIN_USER }}"
-          APPLE_KEY_ID: "${{ secrets.APPLE_KEY_ID }}"
-          APPLE_ISSUER_ID: "${{ secrets.APPLE_ISSUER_ID }}"
-          APPLE_KEY_CONTENT: "${{ secrets.APPLE_KEY_CONTENT }}"
-          XCODE_PATH: "/Applications/Xcode_16.0.app"
+          xcodebuild archive \
+            -scheme "Code App" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath ./build/CodeApp.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            GCC_GENERATE_DEBUGGING_SYMBOLS=NO
+
+      - name: Create Unsigned IPA
+        # 既然不签名，我们手动把 .app 包转为 .ipa
+        run: |
+          mkdir -p Payload
+          cp -r ./build/CodeApp.xcarchive/Products/Applications/*.app Payload/
+          zip -r Code.ipa Payload
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CodeApp-Unsigned-IPA
+          name: CodeApp-Unsigned
           path: Code.ipa
           retention-days: 5
