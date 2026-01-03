@@ -1,8 +1,9 @@
-name: Build & Archive to Actions # 修正了大小写
+name: Build & Upload Artifact
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.ref }}
@@ -15,45 +16,43 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4 # 建议升级到 v4
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          lfs: true # 确保拉取项目中的 .xcframework 等大文件
+          lfs: true # 必须开启，解决 XCFramework 缺失问题
 
       - name: Force LFS Pull
         run: git lfs pull
 
-      - name: Build Unsigned App
+      - name: Build via Fastlane (No Signing)
+        # 这里直接调用 gym (build_app) 而不走 beta lane，避免触发上传
         run: |
-          # 参考你原脚本的逻辑，但直接调用 xcodebuild 绕过签名
-          # 使用 archive 模式是最稳妥的打包方式
-          xcodebuild archive \
-            -scheme "Code App" \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -archivePath ./build/CodeApp.xcarchive \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGN_ENTITLEMENTS="" \
-            GCC_GENERATE_DEBUGGING_SYMBOLS=NO
+          bundle exec fastlane gym \
+            --scheme "Code App" \
+            --clean true \
+            --output_directory "./" \
+            --output_name "Code.ipa" \
+            --skip_profile_detection true \
+            --export_method "ad-hoc" \
+            --xcargs "CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' CODE_SIGN_ENTITLEMENTS='' GCC_GENERATE_DEBUGGING_SYMBOLS=NO"
         env:
-          # 保留你原有的部分环境变量，以防编译脚本中引用了它们
-          JUDGE0_KEY: ""
-          JUDGE0_ENDPOINT: ""
-          XCODE_PATH: "/Applications/Xcode_16.0.app" 
-
-      - name: Package .app to .ipa
-        run: |
-          # 创建标准的 IPA 目录结构
-          mkdir -p Payload
-          cp -r ./build/CodeApp.xcarchive/Products/Applications/*.app Payload/
-          zip -r Code.ipa Payload
+          # 哪怕不签名，也保留这些变量，因为你的项目脚本或 Fastlane 插件可能在读取它们
+          APP_STORE_CONNECT_TEAM_ID: "${{ secrets.APP_STORE_CONNECT_TEAM_ID }}"
+          DEVELOPER_APP_ID: "${{ secrets.DEVELOPER_APP_ID }}"
+          DEVELOPER_APP_IDENTIFIER: "${{ secrets.DEVELOPER_APP_IDENTIFIER }}"
+          DEVELOPER_PORTAL_TEAM_ID: "${{ secrets.DEVELOPER_PORTAL_TEAM_ID }}"
+          MATCH_PASSWORD: "${{ secrets.MATCH_PASSWORD }}"
+          GIT_AUTHORIZATION: "${{ secrets.GIT_AUTHORIZATION }}"
+          TEMP_KEYCHAIN_PASSWORD: "${{ secrets.TEMP_KEYCHAIN_PASSWORD }}"
+          TEMP_KEYCHAIN_USER: "${{ secrets.TEMP_KEYCHAIN_USER }}"
+          APPLE_KEY_ID: "${{ secrets.APPLE_KEY_ID }}"
+          APPLE_ISSUER_ID: "${{ secrets.APPLE_ISSUER_ID }}"
+          APPLE_KEY_CONTENT: "${{ secrets.APPLE_KEY_CONTENT }}"
+          XCODE_PATH: "/Applications/Xcode_16.0.app"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ipa-build-unsigned
+          name: CodeApp-Unsigned
           path: Code.ipa
           retention-days: 5
