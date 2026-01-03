@@ -1,7 +1,9 @@
-name: Build Unsigned Artifact
+name: Build & Upload Artifact
+
 on:
   push:
     branches: [main]
+  workflow_dispatch: # 允许手动触发调试
 
 concurrency:
   group: ${{ github.ref }}
@@ -15,21 +17,40 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Build Unsigned IPA via Fastlane
-        run: fastlane build_unsigned
-        env:
-          # 只保留基础环境配置，删除了所有 Apple 证书、密钥和 Match 相关的 Secrets
-          XCODE_PATH: "/Applications/Xcode_16.0.app" 
-          JUDGE0_KEY: ""
-          JUDGE0_ENDPOINT: ""
+      - name: Set Xcode Version
+        run: sudo xcode-select -s /Applications/Xcode_16.0.app
 
-      - name: Upload Unsigned Artifact
+      - name: Build iOS App (Skip Signing)
+        run: |
+          # 自动获取项目中的第一个 Scheme 名（也可以手动写死，例如 SCHEME="YourAppName"）
+          SCHEME=$(xcodebuild -list -json | jq -r '.project.schemes[0]')
+          echo "Building Scheme: $SCHEME"
+
+          xcodebuild build \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath ./DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            GCC_GENERATE_DEBUGGING_SYMBOLS=NO
+
+      - name: Package .app to .ipa (Unsigned)
+        run: |
+          # 找到编译出的 .app 文件并打包进 Payload 文件夹
+          mkdir -p Payload
+          APP_PATH=$(find ./DerivedData -name "*.app" -type d | head -n 1)
+          cp -r "$APP_PATH" Payload/
+          zip -r Code.ipa Payload
+
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: unsigned-build
-          # 捕获生成的 .ipa 或 .zip 文件
-          path: |
-            ./*.ipa
-            ./*.zip
-          retention-days: 5
+          name: ios-unsigned-build
+          path: Code.ipa
+          retention-days: 7
