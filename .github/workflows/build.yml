@@ -1,4 +1,4 @@
-Name: Build Unsigned Artifact
+name: Build Unsigned Artifact
 on:
   push:
     branches: [main]
