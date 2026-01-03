@@ -11,22 +11,21 @@ concurrency:
 
 jobs:
   build:
-    name: Build iOS Artifact
+    name: Build iPadOS Artifact
     runs-on: macOS-15
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          lfs: true # 关键：拉取 xcframework 等大文件
           fetch-depth: 0
 
       - name: Set Xcode Version
         run: sudo xcode-select -s /Applications/Xcode_16.0.app
 
-      - name: Build iOS App (No Signing)
+      - name: Build App (Skip Signing)
         run: |
-          # 使用指定的 destination 修复 "Found no destinations" 错误
-          # generic/platform=iOS 是构建真机包的通用目标
           xcodebuild build \
             -scheme "Code App" \
             -configuration Release \
@@ -42,19 +41,16 @@ jobs:
       - name: Package .app to .ipa
         run: |
           mkdir -p Payload
-          # 寻找生成的 .app 文件夹
           APP_PATH=$(find ./DerivedData -name "*.app" -type d | grep "Release-iphoneos" | head -n 1)
           if [ -z "$APP_PATH" ]; then
-            echo "Error: Could not find .app file."
+            echo "Error: .app file not found."
             exit 1
           fi
-          echo "Found App at: $APP_PATH"
           cp -r "$APP_PATH" Payload/
           zip -r Code.ipa Payload
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CodeApp-Unsigned
+          name: CodeApp-iPadOS-Unsigned
           path: Code.ipa
-          retention-days: 7
