@@ -1,56 +1,59 @@
-name: Build & Upload Artifact
+name: Build & Archive to Actions # 修正了大小写
 
 on:
   push:
     branches: [main]
-  workflow_dispatch:
 
 concurrency:
   group: ${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build iPadOS Artifact
+  deploy:
+    name: Build Unsigned IPA
     runs-on: macOS-15
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4 # 建议升级到 v4
         with:
-          lfs: true # 关键：拉取 xcframework 等大文件
           fetch-depth: 0
+          lfs: true # 确保拉取项目中的 .xcframework 等大文件
 
-      - name: Set Xcode Version
-        run: sudo xcode-select -s /Applications/Xcode_16.0.app
+      - name: Force LFS Pull
+        run: git lfs pull
 
-      - name: Build App (Skip Signing)
+      - name: Build Unsigned App
         run: |
-          xcodebuild build \
+          # 参考你原脚本的逻辑，但直接调用 xcodebuild 绕过签名
+          # 使用 archive 模式是最稳妥的打包方式
+          xcodebuild archive \
             -scheme "Code App" \
             -configuration Release \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            -derivedDataPath ./DerivedData \
+            -archivePath ./build/CodeApp.xcarchive \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGN_ENTITLEMENTS="" \
             GCC_GENERATE_DEBUGGING_SYMBOLS=NO
+        env:
+          # 保留你原有的部分环境变量，以防编译脚本中引用了它们
+          JUDGE0_KEY: ""
+          JUDGE0_ENDPOINT: ""
+          XCODE_PATH: "/Applications/Xcode_16.0.app" 
 
       - name: Package .app to .ipa
         run: |
+          # 创建标准的 IPA 目录结构
           mkdir -p Payload
-          APP_PATH=$(find ./DerivedData -name "*.app" -type d | grep "Release-iphoneos" | head -n 1)
-          if [ -z "$APP_PATH" ]; then
-            echo "Error: .app file not found."
-            exit 1
-          fi
-          cp -r "$APP_PATH" Payload/
+          cp -r ./build/CodeApp.xcarchive/Products/Applications/*.app Payload/
           zip -r Code.ipa Payload
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CodeApp-iPadOS-Unsigned
+          name: ipa-build-unsigned
           path: Code.ipa
+          retention-days: 5
